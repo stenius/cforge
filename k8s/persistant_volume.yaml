@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: artifacts
+  namespace: cforge
+spec:
+  accessModes:
+    # - ReadWriteMany # not supported by DO
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi

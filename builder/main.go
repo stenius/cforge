@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,8 +54,8 @@ func listFiles(dir string) (map[string]bool, error) {
 	return files, err
 }
 
-func createTarball(newFiles map[string]bool, dir, sha string) error {
-	tarball, err := os.Create(fmt.Sprintf("%s.tar.gz", sha))
+func createTarball(newFiles map[string]bool, dir, tarballPath string) error {
+	tarball, err := os.Create(tarballPath)
 	if err != nil {
 		return err
 	}
@@ -99,6 +100,20 @@ func createTarball(newFiles map[string]bool, dir, sha string) error {
 	return nil
 }
 
+func parseRepoURL(repoURL string) (string, string, error) {
+	u, err := url.Parse(repoURL)
+	if err != nil {
+		return "", "", err
+	}
+
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) < 2 {
+		return "", "", fmt.Errorf("invalid repository URL: %s", repoURL)
+	}
+
+	return parts[0], strings.TrimSuffix(parts[1], ".git"), nil
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		log.Fatalf("Usage: %s <repo-url>", os.Args[0])
@@ -107,6 +122,20 @@ func main() {
 	// clone the repo provided in the arugments to /tmp/cloned-repo and grab the SHA of the latest commit
 	repoURL := os.Args[1]
 	dir := filepath.Join(os.TempDir(), "cloned-repo")
+	artifactDir := os.Getenv("ARTIFACT_DIR")
+	if artifactDir == "" {
+		artifactDir = "."
+	}
+
+	gitUser, gitRepo, err := parseRepoURL(repoURL)
+	if err != nil {
+		log.Fatalf("Failed to parse repository URL: %v", err)
+	}
+
+	outputDir := filepath.Join(artifactDir, gitUser, gitRepo)
+	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
+		log.Fatalf("Failed to create output directory: %v", err)
+	}
 
 	fmt.Println("Cloning repository...")
 	repo, err := cloneRepo(repoURL, dir)
@@ -119,7 +148,9 @@ func main() {
 		log.Fatalf("Failed to get commit SHA: %v", err)
 	}
 
-	logFile, err := os.Create(fmt.Sprintf("build-%s.log", sha))
+
+
+	logFile, err := os.Create(filepath.Join(outputDir, fmt.Sprintf("%s.log", sha)))
 	if err != nil {
 		log.Fatalf("Failed to create log file: %v", err)
 	}
@@ -150,10 +181,11 @@ func main() {
 	}
 
 	if len(createdFiles) > 0 {
-		if err := createTarball(createdFiles, dir, sha); err != nil {
+	  tarballPath := filepath.Join(outputDir, fmt.Sprintf("%s.tar.gz", sha))
+		if err := createTarball(createdFiles, dir, tarballPath); err != nil {
 			log.Fatalf("Failed to create tarball: %v", err)
 		}
-		fmt.Printf("Tarball created: %s.tar.gz\n", sha)
+		fmt.Printf("Tarball created: %s\n", tarballPath, sha)
 	} else {
 		fmt.Println("No new files created.")
 	}

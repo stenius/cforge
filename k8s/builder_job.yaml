@@ -11,5 +11,15 @@ spec:
         image: ghcr.io/stenius/cforge/builder:latest
         args:
         - https://github.com/laristra/c-makefile.git
+        env:
+        - name: ARTIFACT_DIR
+          value: "/mnt/data"
+        volumeMounts:
+        - name: artifacts
+          mountPath: /mnt/data
+      volumes:
+      - name: artifacts
+        persistentVolumeClaim:
+          claimName: artifacts
       restartPolicy: Never
   backoffLimit: 2
