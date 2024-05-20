@@ -23,3 +23,8 @@ COPY --from=builder /app/builder /app/builder
 WORKDIR /app
 
 ENTRYPOINT ["/app/builder"]
+
+LABEL org.opencontainers.image.source=https://github.com/stenius/cforge
+LABEL org.opencontainers.image.description="CForge Builder"
+LABEL org.opencontainers.image.licenses=BSD
+

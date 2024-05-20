@@ -1,6 +1,6 @@
 # Define variables
-BUILDER_IMAGE_NAME=steni.us/builder
-IMAGE_NAME2=myrepo/myimage2
+IMAGE_NAME_BUILDER=ghcr.io/stenius/cforge/builder
+IMAGE_NAME_SERVER=ghcr.io/stenius/cforge/server
 TAG=latest
 
 # Define Docker build, tag, and push commands
@@ -8,27 +8,25 @@ DOCKER_BUILD=docker build
 DOCKER_TAG=docker tag
 DOCKER_PUSH=docker push
 
-.PHONY: all builder build2 push1 push2
+.PHONY: all build-builder build-server push-builder push-server
 
 # Default target
-all: builder build2 push1 push2
+all: build-builder build-server push-builder push-server
 
-# Build the "builder" Docker image
-builder:
-	$(DOCKER_BUILD) -t $(BUILDER_IMAGE_NAME):$(TAG) ./builder
+# Build cforge-builder Docker image
+build-builder:
+	$(DOCKER_BUILD) -t $(IMAGE_NAME_BUILDER):$(TAG) ./builder
 
-# Build the second Docker image
-build2:
-	$(DOCKER_BUILD) -t $(IMAGE_NAME2):$(TAG) ./builder2
+# Build the cforge-server docker image
+build-server:
+	$(DOCKER_BUILD) -t $(IMAGE_NAME_SERVER):$(TAG) ./server
 
-# Push the first Docker image to the repository
-push1:
-	$(DOCKER_PUSH) $(IMAGE_NAME1):$(TAG)
+push-builder:
+	$(DOCKER_PUSH) $(IMAGE_NAME_BUILDER):$(TAG)
 
-# Push the second Docker image to the repository
-push2:
-	$(DOCKER_PUSH) $(IMAGE_NAME2):$(TAG)
+push-server:
+	$(DOCKER_PUSH) $(IMAGE_NAME_SERVER):$(TAG)
 
 # Clean up Docker images
 clean:
-	docker rmi $(IMAGE_NAME1):$(TAG) $(IMAGE_NAME2):$(TAG)
+	docker rmi $(IMAGE_NAME_BUILDER):$(TAG) $(IMAGE_NAME_SERVER):$(TAG)
