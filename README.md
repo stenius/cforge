@@ -2,7 +2,6 @@
 
 CForge is a simple build server and artifact repository for C programs written in ISO C99. It registers, builds, and stores artifacts for C programs tracked in Git repositories. CForge can periodically fetch new commits, build them, and display the status of builds on a web page.
 
-![Kubernetes Architecture](docs/kubernetes_arch.png?raw=true)
 
 ## Features
 
@@ -20,6 +19,8 @@ CForge is a simple build server and artifact repository for C programs written i
 ## Architecture
 
 CForge uses Kubernetes to manage build jobs, artifact storage, and web services.
+
+![Kubernetes Architecture](docs/kubernetes_arch.png?raw=true)
 
 ### Components
 
