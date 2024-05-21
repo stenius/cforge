@@ -23,10 +23,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: fastapi-service
+  name: cforge-service
+  namespace: cforge
 spec:
   selector:
-    app: fastapi
+    app: cforge-server
   ports:
   - protocol: TCP
     port: 80
