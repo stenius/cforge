@@ -2,32 +2,38 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: server
+  namespace: cforge
 ---
+
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   name: server-role
+  namespace: cforge
 rules:
 - apiGroups: ["batch"]
-  resources: ["jobs"]
-  verbs: ["create", "get", "list", "watch", "delete"]
+  resources: ["jobs", "cronjobs"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["cforge.steni.us"]
   resources: ["cforges"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: ["batch"]
-  resources: ["cronjobs"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["", "events.k8s.io"]
+  resources: ["events"]
+  verbs: ["create"]
 ---
+
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
   name: server-role-binding
+  namespace: cforge
 subjects:
 - kind: ServiceAccount
   name: server
-  namespace: default
+  namespace: cforge
+
 roleRef:
-  kind: Role
+  kind: ClusterRole
   name: server-role
   apiGroup: rbac.authorization.k8s.io
 
