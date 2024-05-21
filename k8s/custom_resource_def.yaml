@@ -1,0 +1,46 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: cforges.cforge.steni.us
+spec:
+  group: cforge.steni.us
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              projects:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    repo_url:
+                      type: string
+  scope: Namespaced
+  names:
+    plural: cforges
+    singular: cforge
+    kind: CForge
+    shortNames:
+    - cfg
+
+---
+apiVersion: cforge.steni.us/v1
+kind: CForge
+metadata:
+  name: cforge
+  namespace: cforge
+spec:
+  projects:
+  - name: job1
+    repo_url: https://github.com/laristra/c-makefile.git
+  - name: job2
+    repo_url: https://github.com/laristra/c-makefile.git
