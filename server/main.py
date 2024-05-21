@@ -19,20 +19,20 @@ k8s_client = client.ApiClient()
 batch_v1 = client.BatchV1Api(k8s_client)
 
 
-def create_k8s_job(job_name, repo_url):
+def create_build_job(project_name, repo_url):
     """create a kubernetes job that attaches the artifact volume"""
     job = client.V1Job(
         api_version="batch/v1",
         kind="Job",
-        metadata=client.V1ObjectMeta(name=job_name),
+        metadata=client.V1ObjectMeta(name=project_name),
         spec=client.V1JobSpec(
             template=client.V1PodTemplateSpec(
                 spec=client.V1PodSpec(
                     containers=[
                         client.V1Container(
-                            name=job_name,
+                            name=project_name,
                             image="ghcr.io/stenius/cforge/builder:latest",
-                            args=[repo_url],
+                            args=[project_name, repo_url],
                             volume_mounts=[
                                 client.V1VolumeMount(
                                     name="artifacts", mount_path="/mnt/data"
@@ -56,9 +56,9 @@ def create_k8s_job(job_name, repo_url):
     batch_v1.create_namespaced_job(namespace="cforge", body=job)
 
 
-def delete_k8s_job(job_name):
+def delete_build_job(project_name):
     batch_v1.delete_namespaced_job(
-        name=job_name,
+        name=project_name,
         namespace="cforge",
         body=client.V1DeleteOptions(propagation_policy="Foreground"),
     )
@@ -69,7 +69,7 @@ def on_create(body, **kwargs):
     spec = body.get("spec", {})
     projects = spec.get("projects", [])
     for project in projects:
-        create_k8s_job(project["name"], project["repo_url"])
+        create_build_job(project["name"], project["repo_url"])
 
 
 @kopf.on.update("cforge.steni.us", "v1", "cforge")
@@ -90,14 +90,14 @@ def on_update(body, **kwargs):
 
     for project_name, repo_url in current_projects.items():
         if project_name not in existing_jobs_dict:
-            create_k8s_job(project_name, repo_url)
+            create_build_job(project_name, repo_url)
         elif existing_jobs_dict[project_name] != repo_url:
-            delete_k8s_job(project_name)
-            create_k8s_job(project_name, repo_url)
+            delete_build_job(project_name)
+            create_build_job(project_name, repo_url)
 
     for job_name in existing_jobs_dict:
         if job_name not in current_projects:
-            delete_k8s_job(job_name)
+            delete_build_job(job_name)
 
 
 @kopf.on.delete("cforge.steni.us", "v1", "cforge")
@@ -105,7 +105,7 @@ def on_delete(body, **kwargs):
     spec = body.get("spec", {})
     projects = spec.get("projects", [])
     for project in projects:
-        delete_k8s_job(project["name"])
+        delete_build_job(project["name"])
 
 
 @app.get("/")

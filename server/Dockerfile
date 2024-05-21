@@ -15,4 +15,4 @@ LABEL org.opencontainers.image.description="CForge Server"
 LABEL org.opencontainers.image.licenses=BSD
 
 # Run the server with Uvicorn
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "main.py"]

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -100,39 +99,21 @@ func createTarball(newFiles map[string]bool, dir, tarballPath string) error {
 	return nil
 }
 
-func parseRepoURL(repoURL string) (string, string, error) {
-	u, err := url.Parse(repoURL)
-	if err != nil {
-		return "", "", err
-	}
-
-	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
-	if len(parts) < 2 {
-		return "", "", fmt.Errorf("invalid repository URL: %s", repoURL)
-	}
-
-	return parts[0], strings.TrimSuffix(parts[1], ".git"), nil
-}
-
 func main() {
-	if len(os.Args) < 2 {
-		log.Fatalf("Usage: %s <repo-url>", os.Args[0])
+	if len(os.Args) < 3 {
+		log.Fatalf("Usage: %s <project-name> <repo-url>", os.Args[0])
 	}
 
 	// clone the repo provided in the arugments to /tmp/cloned-repo and grab the SHA of the latest commit
-	repoURL := os.Args[1]
+	projectName := os.Args[1]
+	repoURL := os.Args[2]
 	dir := filepath.Join(os.TempDir(), "cloned-repo")
 	artifactDir := os.Getenv("ARTIFACT_DIR")
 	if artifactDir == "" {
 		artifactDir = "."
 	}
 
-	gitUser, gitRepo, err := parseRepoURL(repoURL)
-	if err != nil {
-		log.Fatalf("Failed to parse repository URL: %v", err)
-	}
-
-	outputDir := filepath.Join(artifactDir, gitUser, gitRepo)
+	outputDir := filepath.Join(artifactDir, projectName)
 	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
 		log.Fatalf("Failed to create output directory: %v", err)
 	}
