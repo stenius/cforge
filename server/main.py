@@ -64,13 +64,12 @@ def delete_k8s_job(job_name):
     )
 
 
-# Kopf handler for the creation of CRD instances
 @kopf.on.create("cforge.steni.us", "v1", "cforge")
 def on_create(body, **kwargs):
     spec = body.get("spec", {})
-    items = spec.get("items", [])
-    for item in items:
-        create_k8s_job(item["name"], item["repo_url"])
+    projects = spec.get("projects", [])
+    for project in projects:
+        create_k8s_job(project["name"], project["repo_url"])
 
 
 @kopf.on.update("cforge.steni.us", "v1", "cforge")
@@ -79,17 +78,17 @@ def on_update(body, **kwargs):
     projects.  If there's a change, delete the old job and create a new one
     with the new repo url"""
     spec = body.get("spec", {})
-    current_items = {
+    current_projects = {
         project["name"]: project["repo_url"] for project in spec.get("projects", [])
     }
 
     existing_jobs = batch_v1.list_namespaced_job(namespace="cforge")
     existing_jobs_dict = {
         job.metadata.name: job.spec.template.spec.containers[0].args[0]
-        for job in existing_jobs.items
+        for job in existing_jobs.projects
     }
 
-    for project_name, repo_url in current_items.items():
+    for project_name, repo_url in current_projects.items():
         if project_name not in existing_jobs_dict:
             create_k8s_job(project_name, repo_url)
         elif existing_jobs_dict[project_name] != repo_url:
@@ -97,16 +96,16 @@ def on_update(body, **kwargs):
             create_k8s_job(project_name, repo_url)
 
     for job_name in existing_jobs_dict:
-        if job_name not in current_items:
+        if job_name not in current_projects:
             delete_k8s_job(job_name)
 
 
 @kopf.on.delete("cforge.steni.us", "v1", "cforge")
 def on_delete(body, **kwargs):
     spec = body.get("spec", {})
-    items = spec.get("projects", [])
-    for item in items:
-        delete_k8s_job(item["name"])
+    projects = spec.get("projects", [])
+    for project in projects:
+        delete_k8s_job(project["name"])
 
 
 @app.get("/")
