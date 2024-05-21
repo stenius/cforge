@@ -30,25 +30,24 @@ CForge uses Kubernetes to manage build jobs, artifact storage, and web services.
 
 2. **Artifact Repository**
    - Artifacts are stored as tarballs in a Kubernetes volume mount.
-   - Tarball names include the repository path and commit SHA.
+   - Tarball names include the project name and commit SHA.
+   - Build logs are stored along side the tarballs.
 
 3. **Config File Watcher**
    - A Kubernetes service watches a configuration file for changes and creates build jobs.
    - Also serves a basic HTTP page displaying build statuses.
+      - Displays the current and previous builds for projects.
+      - Shows the status of builds (completed, failed).
+      - Provides links to logs for builds.
 
 4. **Periodic Builds**
    - Kubernetes CronJobs fetch new commits periodically and trigger builds.
-
-5. **Web Server**
-   - Displays the current and previous builds for C projects.
-   - Shows the status of builds (completed, failed, building, etc.).
-   - Provides links to failure logs for failed builds.
 
 ## Getting Started
 
 ### Prerequisites
 
-- Kubernetes cluster
+- Kubernetes cluster that supports persistent volumes
 - Docker
 - Git
 
@@ -63,10 +62,10 @@ CForge uses Kubernetes to manage build jobs, artifact storage, and web services.
 
 2. **Build Docker Image**
 
-   Build the Docker image for the build job:
+   Build and publish the Docker images for the build job and the server/operator:
 
    ```sh
-   docker build -t cforge-builder:latest -f Dockerfile.builder .
+   make
    ```
 
 3. **Deploy to Kubernetes**
@@ -79,7 +78,22 @@ CForge uses Kubernetes to manage build jobs, artifact storage, and web services.
 
 4. **Update Configuration File**
 
-   Update the `config.yaml` file with the Git URLs of the C programs you want to register.
+   Create and apply a 'CForge' custom resource with your project details.
+
+   ```yaml
+   apiVersion: cforge.steni.us/v1
+   kind: CForge
+   metadata:
+     name: cforge
+     namespace: cforge
+   spec:
+     projects:
+     - name: helloworld
+       repo_url: https://github.com/laristra/c-makefile.git
+     - name: job2
+       repo_url: https://github.com/laristra/c-makefile.git
+
+   ```
 
 
 ### Using CForge
@@ -119,3 +133,4 @@ CForge uses the following open-source projects:
 
 - [Kubernetes](https://kubernetes.io/)
 - [Debian](https://www.debian.org/)
+- [Kopf](https://kopf.readthedocs.io/)
