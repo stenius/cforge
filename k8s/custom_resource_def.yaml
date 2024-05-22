@@ -24,6 +24,14 @@ spec:
                       type: string
                     repo_url:
                       type: string
+                      format: uri
+                    schedule:
+                      type: string
+                      pattern: '^(\d+|\*)(/\d+)?(\s+(\d+|\*)(/\d+)?){4}$'
+                  required:
+                    - name
+                    - repo_url
+                
   scope: Namespaced
   names:
     plural: cforges
@@ -42,5 +50,6 @@ spec:
   projects:
   - name: job1
     repo_url: https://github.com/laristra/c-makefile.git
+    schedule: "*/5 * * * *"
   - name: job2
     repo_url: https://github.com/laristra/c-makefile.git
