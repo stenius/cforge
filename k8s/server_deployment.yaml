@@ -19,6 +19,16 @@ spec:
         image: ghcr.io/stenius/cforge/server:latest
         ports:
         - containerPort: 8000
+        volumeMounts:
+        - name: artifacts
+          mountPath: /mnt/data
+        env:
+        - name: ARTIFACT_DIR
+          value: "/mnt/data"
+      volumes:
+      - name: artifacts
+        persistentVolumeClaim:
+          claimName: artifacts
 ---
 apiVersion: v1
 kind: Service
