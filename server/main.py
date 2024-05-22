@@ -1,5 +1,8 @@
 import asyncio
 import json
+import logging
+import random
+import string
 import threading
 
 import kopf
@@ -8,56 +11,112 @@ from kubernetes import client, config
 
 app = FastAPI()
 
+logging.basicConfig(level=logging.INFO)
+
+# Load Kubernetes config or get it from the cluster
 try:
-    # Load Kubernetes config
     config.load_kube_config()
 except config.config_exception.ConfigException:
-    # Load incluster config
     config.load_incluster_config()
 
 k8s_client = client.ApiClient()
 batch_v1 = client.BatchV1Api(k8s_client)
 
+DEFAULT_SCHEDULE = "* * 31 2 *"
 
-def create_build_job(project_name, repo_url):
-    """create a kubernetes job that attaches the artifact volume"""
+
+# looking up the job_template from the cronjob so I can call this from the web-ui to rebuild a project manually
+def create_job_from_cronjob(project_name):
+    """start a job from the cronjob template"""
+    job_name = f"%s-%s" % (
+        project_name,
+        "".join(random.choices(string.ascii_letters + string.digits, k=8)),
+    )
+    # Get the CronJob
+    cronjob = batch_v1.read_namespaced_cron_job(name=project_name, namespace="cforge")
+
+    # Create Job from CronJob's template
+    job_template = cronjob.spec.job_template
+    job_template.metadata = client.V1ObjectMeta(name=job_name)
+
+    # Create the job
+    job = client.V1Job(
+        api_version="batch/v1",
+        kind="Job",
+        metadata=job_template.metadata,
+        spec=job_template.spec,
+    )
+
+    # Create the job in the specified namespace
+    batch_v1.create_namespaced_job(namespace="cforge", body=job)
+    logging.info(f"Job {job_name} created successfully from CronJob {project_name}")
+
+
+def create_build_cronjob(project_name, repo_url, schedule):
+    """create a kubernetes cronjob that attaches the artifact volume"""
     job = client.V1Job(
         api_version="batch/v1",
         kind="Job",
         metadata=client.V1ObjectMeta(name=project_name),
-        spec=client.V1JobSpec(
-            template=client.V1PodTemplateSpec(
-                spec=client.V1PodSpec(
-                    containers=[
-                        client.V1Container(
-                            name=project_name,
-                            image="ghcr.io/stenius/cforge/builder:latest",
-                            args=[project_name, repo_url],
-                            volume_mounts=[
-                                client.V1VolumeMount(
-                                    name="artifacts", mount_path="/mnt/data"
+    )
+
+    cronjob = client.V1CronJob(
+        api_version="batch/v1",
+        kind="CronJob",
+        metadata=client.V1ObjectMeta(name=project_name, namespace="cforge"),
+        spec=client.V1CronJobSpec(
+            schedule=schedule if schedule else DEFAULT_SCHEDULE,
+            job_template=client.V1JobTemplateSpec(
+                spec=client.V1JobSpec(
+                    ttl_seconds_after_finished=100,  # clean up the old jobs after 100 seconds
+                    template=client.V1PodTemplateSpec(
+                        spec=client.V1PodSpec(
+                            containers=[
+                                client.V1Container(
+                                    name=project_name,
+                                    image="ghcr.io/stenius/cforge/builder:latest",
+                                    args=[project_name, repo_url],
+                                    volume_mounts=[
+                                        client.V1VolumeMount(
+                                            name="artifacts", mount_path="/mnt/data"
+                                        )
+                                    ],
                                 )
                             ],
+                            volumes=[
+                                client.V1Volume(
+                                    name="artifacts",
+                                    persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(
+                                        claim_name="artifacts"
+                                    ),
+                                )
+                            ],
+                            restart_policy="Never",
                         )
-                    ],
-                    volumes=[
-                        client.V1Volume(
-                            name="artifacts",
-                            persistent_volume_claim=client.V1PersistentVolumeClaimVolumeSource(
-                                claim_name="artifacts"
-                            ),
-                        )
-                    ],
-                    restart_policy="Never",
-                )
-            )
+                    ),
+                ),
+            ),
+            suspend=not bool(schedule),  # disable cron if project isn't scheduled
         ),
     )
-    batch_v1.create_namespaced_job(namespace="cforge", body=job)
+
+    existing_cronjobs = batch_v1.list_namespaced_cron_job(namespace="cforge")
+    cronjob_names = [cj.metadata.name for cj in existing_cronjobs.items]
+    if project_name in cronjob_names:
+        batch_v1.replace_namespaced_cron_job(
+            name=project_name, namespace="cforge", body=cronjob
+        )
+        logging.info(f"CronJob {project_name} updated successfully")
+    else:
+        batch_v1.create_namespaced_cron_job(namespace="cforge", body=cronjob)
+        logging.info(f"CronJob {project_name} created successfully")
+
+    # run the job whenever it is created or changed
+    create_job_from_cronjob(project_name)
 
 
-def delete_build_job(project_name):
-    batch_v1.delete_namespaced_job(
+def delete_build_cronjob(project_name):
+    batch_v1.delete_namespaced_cron_job(
         name=project_name,
         namespace="cforge",
         body=client.V1DeleteOptions(propagation_policy="Foreground"),
@@ -69,7 +128,7 @@ def on_create(body, **kwargs):
     spec = body.get("spec", {})
     projects = spec.get("projects", [])
     for project in projects:
-        create_build_job(project["name"], project["repo_url"])
+        create_build_job(project["name"], project["repo_url"], project.get("schedule"))
 
 
 @kopf.on.update("cforge.steni.us", "v1", "cforge")
@@ -79,25 +138,41 @@ def on_update(body, **kwargs):
     with the new repo url"""
     spec = body.get("spec", {})
     current_projects = {
-        project["name"]: project["repo_url"] for project in spec.get("projects", [])
+        project["name"]: project for project in spec.get("projects", [])
     }
 
-    existing_jobs = batch_v1.list_namespaced_job(namespace="cforge")
-    existing_jobs_dict = {
-        job.metadata.name: job.spec.template.spec.containers[0].args[0]
-        for job in existing_jobs.projects
+    existing_cronjobs = batch_v1.list_namespaced_cron_job(namespace="cforge")
+    # pull the args out of the existing cronjobs that are part of the CForge project object
+    existing_cronjobs_dict = {
+        cj.metadata.name: {
+            "repo_url": cj.spec.job_template.spec.template.spec.containers[0].args[1],
+            "schedule": cj.spec.schedule,
+        }
+        for cj in existing_cronjobs.items
     }
 
-    for project_name, repo_url in current_projects.items():
-        if project_name not in existing_jobs_dict:
-            create_build_job(project_name, repo_url)
-        elif existing_jobs_dict[project_name] != repo_url:
-            delete_build_job(project_name)
-            create_build_job(project_name, repo_url)
+    def cron_job_has_changed(old, new):
+        if not new:
+            new = DEFAULT_SCHEDULE
+        return old != new
 
-    for job_name in existing_jobs_dict:
-        if job_name not in current_projects:
-            delete_build_job(job_name)
+    for project_name, project in current_projects.items():
+        repo_url = project["repo_url"]
+        schedule = project.get("schedule")
+        if project_name not in existing_cronjobs_dict:
+            create_build_cronjob(project_name, repo_url, schedule)
+        # check to see if there's a cronjob with the same name but different settings and recreate if so.
+        elif existing_cronjobs_dict[project_name][
+            "repo_url"
+        ] != repo_url or cron_job_has_changed(
+            existing_cronjobs_dict[project_name]["schedule"], schedule
+        ):
+            delete_build_cronjob(project_name)
+            create_build_cronjob(project_name, repo_url, schedule)
+
+    for project_name in existing_cronjobs_dict:
+        if project_name not in current_projects:
+            delete_build_cronjob(project_name)
 
 
 @kopf.on.delete("cforge.steni.us", "v1", "cforge")
@@ -105,7 +180,7 @@ def on_delete(body, **kwargs):
     spec = body.get("spec", {})
     projects = spec.get("projects", [])
     for project in projects:
-        delete_build_job(project["name"])
+        delete_build_cronjob(project["name"])
 
 
 @app.get("/")
