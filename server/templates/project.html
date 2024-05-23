@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CForge: {{ project.name }}</title>
+    <style>
+        .success { background-color: #d4edda; }
+        .failure { background-color: #f8d7da; }
+    </style>
+</head>
+<body>
+    <h1>Project: {{ project.name }}</h1>
+    <table>
+        <tr>
+            <th>SHA</th>
+            <th>Status</th>
+            <th>Log</th>
+            <th>Tarball</th>
+            <th>Timestamp</th>
+        </tr>
+        {% for build in project.builds %}
+        <tr class="{{ build.status }}">
+            <td>{{ build.sha }}</td>
+            <td>{{ build.status }}</td>
+            <td><a href="{{ build.log_file }}">Log</a></td>
+            <td>{% if build.tarball %}<a href="{{ build.tarball }}">Tarball</a>{% else %}N/A{% endif %}</td>
+            <td>{{ build.timestamp | datetimeformat }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    <a href="/">Back to Projects</a>
+</body>
+</html>

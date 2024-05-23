@@ -1,17 +1,30 @@
 import asyncio
 import json
 import logging
+import os
 import random
 import string
 import threading
+from datetime import datetime
+from pathlib import Path
 
 import kopf
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from kubernetes import client, config
 
-app = FastAPI()
+from filters import datetimeformat
 
 logging.basicConfig(level=logging.INFO)
+
+app = FastAPI()
+templates = Jinja2Templates(directory="templates")
+templates.env.filters["datetimeformat"] = datetimeformat
+ARTIFACT_DIR = os.getenv("ARTIFACT_DIR", "./artifacts")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/artifacts", StaticFiles(directory=ARTIFACT_DIR), name="artifacts")
+
 
 # Load Kubernetes config or get it from the cluster
 try:
@@ -30,7 +43,7 @@ def create_job_from_cronjob(project_name):
     """start a job from the cronjob template"""
     job_name = f"%s-%s" % (
         project_name,
-        "".join(random.choices(string.ascii_letters + string.digits, k=8)),
+        "".join(random.choices(string.ascii_lowercase + string.digits, k=8)),
     )
     # Get the CronJob
     cronjob = batch_v1.read_namespaced_cron_job(name=project_name, namespace="cforge")
@@ -79,6 +92,11 @@ def create_build_cronjob(project_name, repo_url, schedule):
                                     volume_mounts=[
                                         client.V1VolumeMount(
                                             name="artifacts", mount_path="/mnt/data"
+                                        )
+                                    ],
+                                    env=[
+                                        client.V1EnvVar(
+                                            name="ARTIFACT_DIR", value="/mnt/data"
                                         )
                                     ],
                                 )
@@ -183,9 +201,58 @@ def on_delete(body, **kwargs):
         delete_build_cronjob(project["name"])
 
 
+def get_projects():
+    projects = []
+    artifact_path = Path(ARTIFACT_DIR)
+    if not artifact_path.exists():
+        return projects
+
+    for project_dir in artifact_path.iterdir():
+        if project_dir.is_dir():
+            project = {"name": project_dir.name, "builds": []}
+            for build_file in project_dir.iterdir():
+                if build_file.suffix == ".log":
+                    sha = build_file.stem
+                    log_file = build_file
+                    tarball = project_dir / f"{sha}.tar.gz"
+                    build_status = "success" if tarball.exists() else "failure"
+                    project["builds"].append(
+                        {
+                            "sha": sha,
+                            "log_file": f"/artifacts/{project_dir.name}/{log_file.name}",
+                            "tarball": (
+                                f"/artifacts/{project_dir.name}/{tarball.name}"
+                                if tarball.exists()
+                                else None
+                            ),
+                            "status": build_status,
+                            "timestamp": log_file.stat().st_mtime,
+                        }
+                    )
+            project["builds"].sort(key=lambda x: x["timestamp"], reverse=True)
+            if project["builds"]:
+                project["latest_build"] = project["builds"][0]
+                projects.append(project)
+    return projects
+
+
+@app.get("/project/{project_name}")
+async def read_project(request: Request, project_name: str):
+    projects = get_projects()
+    for project in projects:
+        if project["name"] == project_name:
+            return templates.TemplateResponse(
+                "project.html", {"request": request, "project": project}
+            )
+    return {"error": "Project not found"}
+
+
 @app.get("/")
-async def root():
-    return {"Hello": "World!"}
+async def root(request: Request):
+    projects = get_projects()
+    return templates.TemplateResponse(
+        "index.html", {"request": request, "projects": projects}
+    )
 
 
 def run_fastapi():

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CForge: Projects</title>
+    <style>
+        .success { background-color: #d4edda; }
+        .failure { background-color: #f8d7da; }
+    </style>
+</head>
+<body>
+    <h1>Projects</h1>
+    <table>
+        <tr>
+            <th>Project</th>
+            <th>Latest Build</th>
+            <th>Status</th>
+            <th>Log</th>
+            <th>Tarball</th>
+        </tr>
+        {% for project in projects %}
+        <tr class="{{ project.latest_build.status }}">
+            <td><a href="/project/{{ project.name }}">{{ project.name }}</a></td>
+            <td>{{ project.latest_build.sha }}</td>
+            <td>{{ project.latest_build.status }}</td>
+            <td><a href="{{ project.latest_build.log_file }}">Log</a></td>
+            <td>{% if project.latest_build.tarball %}<a href="{{ project.latest_build.tarball }}">Tarball</a>{% else %}N/A{% endif %}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>
