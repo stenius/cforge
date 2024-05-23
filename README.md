@@ -10,7 +10,7 @@ CForge is a simple build server and artifact repository for C programs written i
 - **Periodic Builds**: Automatically fetches new commits periodically and builds them.
 - **Web Page**: Displays the status of current and previous builds.
 ![Project Listing](docs/projects_root.png?raw=true)
-![Project Details](docs/project_details.png?raw=true)
+![Project Details](docs/project_detail.png?raw=true)
 
 ## Assumptions
 
